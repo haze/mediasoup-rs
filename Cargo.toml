@@ -1,0 +1,20 @@
+[package]
+name = "mediasoup_client"
+version = "0.1.0"
+authors = ["haze <isnt@haze.cool>"]
+edition = "2018"
+
+[dependencies]
+argh = "0.1.4"
+tokio = { version = "0.2.2", features = ["rt-threaded", "macros", "sync", "time"] }
+surf = "2.1.0"
+serde = { version = "1.0.117", features = ["derive"] }
+serde_json = "1.0.59"
+uuid = { version = "0.8.1", features = ["v4"] }
+thiserror = "1.0.22"
+mediasoup-sys = { path = "mediasoup-sys" }
+
+[workspace]
+members = [
+    "mediasoup-sys"
+]
