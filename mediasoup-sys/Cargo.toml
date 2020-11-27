@@ -1,0 +1,13 @@
+[package]
+name = "mediasoup-sys"
+version = "0.1.0"
+authors = ["haze <isnt@haze.cool>"]
+edition = "2018"
+
+[dependencies]
+cxx = "1.0.0"
+
+[build-dependencies]
+pkg-config = "0.3.17"
+cc = "1.0.54"
+cxx-build = "1.0.0"
