@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         polling_interval,
     );
     let join_resp = client.join_room().await?;
+    dbg!(&join_resp);
     client.load_device_from_capabilities(&join_resp).await;
     // dbg!(&join_resp);
 
@@ -240,7 +241,7 @@ impl Client {
             } else {
                 println!("new peers below (cache begin):");
                 for peer_id in response.peers.keys() {
-                    println!("{}", peer_id);
+                    println!("{:?}", peer_id);
                 }
 
                 new_peer_found = true;
@@ -257,6 +258,8 @@ impl Client {
                     {
                         eprintln!("Failed to run on_target_found callback: {:?}", &why);
                     }
+                } else {
+                    eprintln!("new peers doesn't contain target");
                 }
             }
         }

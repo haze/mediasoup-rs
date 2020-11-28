@@ -146,7 +146,10 @@ void ProxyDevice::OnBufferedAmountChange(mediasoupclient::DataProducer* /*dataPr
 
 
 void ProxyDevice::load_capabilities_from_string(rust::String capabilities) {
-  device.Load(nlohmann::json::parse(std::string(capabilities)));
+  auto json = nlohmann::json::parse(std::string(capabilities));
+  std::cout << "LOADING DEVICE CAPABILITIES\n\n";
+  std::cout << json.dump(4) << std::endl;
+  device.Load(json);
 }
 
 bool ProxyDevice::is_loaded() const {

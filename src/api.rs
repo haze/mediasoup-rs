@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 /// types used for the `/recv-track` route
 pub mod recv_track {
-    use super::{Deserialize, RTPCapabilities, Serialize};
+    use super::{Deserialize, Feedback, RTPCapabilities, Serialize};
 
     #[derive(Serialize)]
     pub struct Request {
@@ -59,13 +59,6 @@ pub mod recv_track {
         payload_type: usize,
         #[serde(rename = "rtcpFeedback")]
         rtcp_feedback: Vec<Feedback>,
-    }
-
-    #[derive(Deserialize, Debug)]
-    pub struct Feedback {
-        #[serde(rename = "type")]
-        kind: String,
-        parameter: String,
     }
 
     #[derive(Deserialize, Debug)]
@@ -296,6 +289,17 @@ struct SharedCodecAttributes {
     clock_rate: usize,
     #[serde(rename = "preferredPayloadType")]
     preferred_payload_type: usize,
+
+    parameters: serde_json::Value,
+    #[serde(rename = "rtcpFeedback")]
+    rtcp_feedback: Vec<Feedback>,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct Feedback {
+    #[serde(rename = "type")]
+    kind: String,
+    parameter: String,
 }
 
 // TODO(haze): investigate direction
