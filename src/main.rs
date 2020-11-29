@@ -130,7 +130,7 @@ impl Client {
 
     // TODO(haze): Return proper error with cxx::Exception
     async fn load_device_from_capabilities(&mut self, capabilities: &api::CapabilitiesResponse) {
-        if let Ok(capabilities_str) = serde_json::to_string(capabilities) {
+        if let Ok(capabilities_str) = serde_json::to_string(&capabilities.router_rtp_capabilities) {
             let mut device_write_lock = self.proxy_device.write().await;
             if let Err(why) = device_write_lock
                 .pin_mut()
@@ -185,12 +185,13 @@ impl Client {
                     _ = interval.tick() => {
                         match Client::sync_raw(&*task_server_address, &*task_peer_id).await {
                             Ok(response) =>
-                                Client::on_sync_update(&peer_data_tx, &task_peer_peek, &active_speaker_tx,
-                                    &task_host,
-                                    &task_peer_id,
-                                    &task_target_peer_id,
-                                    &task_device,
-                                    response).await,
+                                        Client::on_sync_update(&peer_data_tx, &task_peer_peek, &active_speaker_tx,
+                                            &task_host,
+                                            &task_peer_id,
+                                            &task_target_peer_id,
+                                            &task_device,
+                                            response
+                                        ).await,
                             Err(why) =>
                                 eprintln!("Got error from sync request: {}", &why),
                         }
@@ -279,10 +280,11 @@ impl Client {
         target_peer_id: &str,
         device: &SharedProxyDevice,
     ) -> Result<()> {
+        let media_tag = String::from("screen-video");
         let create_transport_resp = Client::create_transport_raw(
             host,
             &api::RawCreateTransport {
-                direction: api::TransportDirection::Send,
+                direction: api::TransportDirection::Receive,
                 peer_id: my_peer_id,
             },
         )
@@ -298,22 +300,69 @@ impl Client {
             device
                 .pin_mut()
                 .create_fake_recv_transport(transport_options_str);
+            eprintln!("Created fake transport");
         }
 
         // we dropped the write lock, get a read one
         let device_read = device.read().await;
         let rtp_capabilities = serde_json::from_str(&*device_read.get_recv_rtp_capabilities()?)?;
+        drop(device_read);
+
+        eprintln!("RTP_Capabilities: {:?}", &rtp_capabilities);
 
         let recv_track_request = api::recv_track::Request {
             peer_id: my_peer_id.to_string(),
             media_peer_id: target_peer_id.to_string(),
-            media_tag: String::from("screen-video"),
+            // TODO(haze): more than just screen-video
+            media_tag: media_tag.clone(),
             rtp_capabilities,
         };
 
         // create the recv track
         let recv_track_response = Client::recv_track_raw(host, &recv_track_request).await?;
         dbg!(&recv_track_response);
+
+        {
+            // id: String,
+            // kind: CodecKind,
+            // #[serde(rename = "producerId")]
+            // producer_id: String,
+            // #[serde(rename = "producerPaused")]
+            // producer_paused: bool,
+            // #[serde(rename = "rtpParameters")]
+            // rtp_parameters: RTPParameters,
+            // #[serde(rename = "type")]
+            // track_kind: String,
+
+            eprintln!("Attemtping recv::consume");
+            let producer_id = recv_track_response.producer_id.clone();
+            let id = recv_track_response.id.clone();
+            // TODO(haze): Figure out Consume label and protocol (these come from the demo);
+            let label = String::from("chat");
+            let protocol = String::from("");
+            if let Ok(app_data) = serde_json::to_string(&CreateConsumerAppData {
+                peer_id: target_peer_id.to_string(),
+                media_tag: media_tag.clone(),
+            }) {
+                eprintln!("right before");
+                let mut device = device.write().await;
+                device
+                    .pin_mut()
+                    .create_data_consumer(id, producer_id, label, protocol, app_data);
+                eprintln!("recv::consume success");
+            } else {
+                eprintln!("Could not serialize appdata");
+            }
+        }
+
+        // start the consumer
+
+        // let connect_transport_request = api::connect_transport::Request {
+        //     peer_id: my_peer_id.to_string(),
+        //     transport_id: recv_track_response.transport_options.id.clone(),
+        // };
+        // // ok now connect them together
+        // let connect_transport_response = Client::connect_transport_response(host).await?;
 
         Ok(())
     }
@@ -351,6 +400,25 @@ impl Client {
             .map_err(|e| e.into())
     }
 
+    async fn connect_transport(
+        &self,
+        request: &api::connect_transport::Request,
+    ) -> Result<api::connect_transport::Response> {
+        Client::connect_transport_raw(&*self.server_address, request).await
+    }
+
+    async fn connect_transport_raw(
+        host: &str,
+        request: &api::connect_transport::Request,
+    ) -> Result<api::connect_transport::Response> {
+        let url = format!("{}/signaling/connect-transport", host);
+        surf::post(url)
+            .body(surf::Body::from_json(request)?)
+            .recv_json()
+            .await
+            .map_err(|e| e.into())
+    }
+
     async fn sync(&mut self) -> Result<api::SyncResponse> {
         Client::sync_raw(&*self.server_address, &*self.peer_id).await
     }
@@ -364,17 +432,17 @@ impl Client {
             .map_err(|e| e.into())
     }
 
-    //     async fn recv_track(
-    //         &mut self,
-    //         request: &api::recv_track::Request,
-    //     ) -> Result<api::recv_track::Response> {
-    //         Client::recv_track_raw(&*self.server_address, request).await
-    //     }
+    async fn recv_track(
+        &mut self,
+        request: &api::recv_track::Request,
+    ) -> Result<api::recv_track::Response> {
+        Client::recv_track_raw(&*self.server_address, request).await
+    }
 
     async fn recv_track_raw(
         host: &str,
         request: &api::recv_track::Request,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<api::recv_track::Response> {
         let url = format!("{}/signaling/recv-track", host);
         surf::post(url)
             .body(surf::Body::from_json(request)?)
@@ -401,4 +469,12 @@ impl Client {
             .await
             .map_err(|e| e.into())
     }
+}
+
+#[derive(serde::Serialize)]
+struct CreateConsumerAppData {
+    #[serde(rename = "peerId")]
+    peer_id: String,
+    #[serde(rename = "mediaTag")]
+    media_tag: String,
 }

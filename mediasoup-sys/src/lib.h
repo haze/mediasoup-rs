@@ -59,11 +59,21 @@ public:
 	void OnClose(mediasoupclient::DataProducer* dataProducer) override;
 	void OnBufferedAmountChange(mediasoupclient::DataProducer* dataProducer, uint64_t size) override;
 	void OnTransportClose(mediasoupclient::DataProducer* dataProducer) override;
+	std::future<void> OnConnectSendTransport(const nlohmann::json& dtlsParameters);
+	std::future<void> OnConnectRecvTransport(const nlohmann::json& dtlsParameters);
 
   bool is_loaded() const;
   rust::String get_recv_rtp_capabilities() const;
   rust::String get_sctp_capabilities() const;
   void load_capabilities_from_string(rust::String);
+
+  void create_data_consumer(
+      const rust::String id,
+      const rust::String producerId,
+      const rust::String label,
+      const rust::String protocol,
+      const rust::String appData
+  );
 
   void CreateFakeSendTransport() const;
   void create_fake_recv_transport(
@@ -75,6 +85,9 @@ private:
 
   mediasoupclient::RecvTransport* recvTransport{ nullptr };
   mediasoupclient::SendTransport* sendTransport{ nullptr };
+
+  mediasoupclient::DataProducer* dataProducer{ nullptr };
+  mediasoupclient::DataConsumer* dataConsumer{ nullptr };
 };
 
 std::unique_ptr<ProxyDevice> new_mediasoup_device();

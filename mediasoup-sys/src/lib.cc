@@ -43,6 +43,7 @@ void ProxyDevice::create_fake_recv_transport(
     const rust::String transportOptionsJsonStr
 ) {
   auto transportOptions = nlohmann::json::parse(std::string(transportOptionsJsonStr));
+  std::cout << transportOptions["sctpParameters"].dump(4) << std::endl;
   this->recvTransport = this->device.CreateRecvTransport(
     this,
     transportOptions["id"],
@@ -55,6 +56,8 @@ void ProxyDevice::create_fake_recv_transport(
 
 std::future<void> ProxyDevice::OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters)
 {
+  std::cout << "ON CONNECT CALLBACK OR WHATEVVVER" << std::endl;
+  std::cout << dtlsParameters.dump(4) << std::endl;
   std::packaged_task<void()> task([]{ 
       std::cout << "on connect!" << std::endl;
       return; 
@@ -62,6 +65,43 @@ std::future<void> ProxyDevice::OnConnect(mediasoupclient::Transport* transport, 
   return task.get_future();
 }
 
+std::future<void> ProxyDevice::OnConnectRecvTransport(const nlohmann::json& dtlsParameters)
+{
+    std::cout << "ON CONNECT RECV CALLBACK OR WHATEVVVER" << std::endl;
+  std::cout << dtlsParameters.dump(4) << std::endl;
+  std::packaged_task<void()> task([]{ 
+      std::cout << "on connect recv!" << std::endl;
+      return; 
+  }); // wrap the function
+  return task.get_future();
+}
+
+std::future<void> ProxyDevice::OnConnectSendTransport(const nlohmann::json& dtlsParameters)
+{
+    std::cout << "ON CONNECT SEND CALLBACK OR WHATEVVVER" << std::endl;
+  std::cout << dtlsParameters.dump(4) << std::endl;
+  std::packaged_task<void()> task([]{ 
+      std::cout << "on connect recv!" << std::endl;
+      return; 
+  }); // wrap the function
+  return task.get_future();
+}
+
+void ProxyDevice::create_data_consumer(
+    const rust::String consumerId,
+    const rust::String producerId,
+    const rust::String label,
+    const rust::String protocol,
+    const rust::String appData
+) {
+  this->dataConsumer = this->recvTransport->ConsumeData(
+      this, 
+      std::string(consumerId),
+      std::string(producerId), 
+      std::string(label),
+      std::string(protocol),
+      nlohmann::json::parse(std::string(appData)));
+}
 
 /*
  * Transport::Listener::OnConnectionStateChange.
@@ -146,10 +186,7 @@ void ProxyDevice::OnBufferedAmountChange(mediasoupclient::DataProducer* /*dataPr
 
 
 void ProxyDevice::load_capabilities_from_string(rust::String capabilities) {
-  auto json = nlohmann::json::parse(std::string(capabilities));
-  std::cout << "LOADING DEVICE CAPABILITIES\n\n";
-  std::cout << json.dump(4) << std::endl;
-  device.Load(json);
+  device.Load(nlohmann::json::parse(std::string(capabilities)));
 }
 
 bool ProxyDevice::is_loaded() const {

@@ -1,6 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// types used for the `/connect-transport` route
+pub mod connect_transport {
+    use super::{DTLSParameters, Deserialize, Serialize};
+
+    #[derive(Deserialize)]
+    pub struct Response {
+        connected: bool,
+    }
+
+    #[derive(Serialize)]
+    pub struct Request {
+        #[serde(rename = "dtlsParameters")]
+        dtls_parameters: DTLSParameters,
+        peer_id: String,
+        #[serde(rename = "transportId")]
+        transport_id: String,
+    }
+}
+
 /// types used for the `/recv-track` route
 pub mod recv_track {
     use super::{Deserialize, Feedback, RTPCapabilities, Serialize};
@@ -27,12 +46,13 @@ pub mod recv_track {
     // TODO(haze): transform `kind` from String to typed enum
     #[derive(Deserialize, Debug)]
     pub struct Response {
-        id: String,
+        pub id: String,
         kind: CodecKind,
         #[serde(rename = "producerId")]
-        producer_id: String,
+        pub producer_id: String,
         #[serde(rename = "producerPaused")]
         producer_paused: bool,
+        #[serde(rename = "rtpParameters")]
         rtp_parameters: RTPParameters,
         #[serde(rename = "type")]
         track_kind: String,
@@ -105,6 +125,8 @@ impl CreateTransport {
 #[derive(Serialize)]
 pub enum TransportDirection {
     Send,
+    #[serde(rename = "recv")]
+    Receive,
 }
 
 #[derive(Deserialize, Debug)]
@@ -181,7 +203,7 @@ pub struct LeaveResponse {
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CapabilitiesResponse {
     #[serde(rename = "routerRtpCapabilities")]
-    router_rtp_capabilities: RTPCapabilities,
+    pub router_rtp_capabilities: RTPCapabilities,
 }
 
 pub type PeerMap = HashMap<String, PeerInfo>;
@@ -216,7 +238,7 @@ pub struct PeerInfo {
     media: Media,
     #[serde(rename = "consumerLayers")]
     consumer_layers: HashMap<String, ConsumerLayer>,
-    stats: HashMap<String, Vec<Stats>>,
+    stats: HashMap<String, serde_json::Value>,
 }
 
 // TODO(haze): Add extra media types (only experimented with screen sharing for now)

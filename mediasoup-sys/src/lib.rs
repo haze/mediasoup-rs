@@ -17,6 +17,15 @@ pub mod ffi {
         ) -> Result<()>;
 
         fn create_fake_recv_transport(self: Pin<&mut ProxyDevice>, transport_options_str: String);
+
+        fn create_data_consumer(
+            self: Pin<&mut ProxyDevice>,
+            id: String,
+            producer_id: String,
+            label: String,
+            protocol: String,
+            app_data: String,
+        );
     }
 }
 
