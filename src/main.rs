@@ -322,37 +322,30 @@ impl Client {
         let recv_track_response = Client::recv_track_raw(host, &recv_track_request).await?;
         dbg!(&recv_track_response);
 
-        {
-            // id: String,
-            // kind: CodecKind,
-            // #[serde(rename = "producerId")]
-            // producer_id: String,
-            // #[serde(rename = "producerPaused")]
-            // producer_paused: bool,
-            // #[serde(rename = "rtpParameters")]
-            // rtp_parameters: RTPParameters,
-            // #[serde(rename = "type")]
-            // track_kind: String,
+        // fn create_consumer(
+        //     self: Pin<&mut ProxyDevice>,
+        //     id: String,
+        //     producer_id: String,
+        //     kind: String,
+        //     rtp_parameters_str: String,
+        //     app_data_str: String,
+        // );
 
-            eprintln!("Attemtping recv::consume");
-            let producer_id = recv_track_response.producer_id.clone();
-            let id = recv_track_response.id.clone();
-            // TODO(haze): Figure out Consume label and protocol (these come from the demo);
-            let label = String::from("chat");
-            let protocol = String::from("");
-            if let Ok(app_data) = serde_json::to_string(&CreateConsumerAppData {
+        {
+            let app_data = serde_json::to_string(&CreateConsumerAppData {
                 peer_id: target_peer_id.to_string(),
                 media_tag: media_tag.clone(),
-            }) {
-                eprintln!("right before");
-                let mut device = device.write().await;
-                device
-                    .pin_mut()
-                    .create_data_consumer(id, producer_id, label, protocol, app_data);
-                eprintln!("recv::consume success");
-            } else {
-                eprintln!("Could not serialize appdata");
-            }
+            })?;
+            let rtp_parameters = serde_json::to_string(&recv_track_response.rtp_parameters)?;
+            dbg!((&app_data, &rtp_parameters));
+            let mut device = device.write().await;
+            device.pin_mut().create_consumer(
+                recv_track_response.id.clone(),
+                recv_track_response.producer_id.clone(),
+                recv_track_response.kind.to_string(),
+                rtp_parameters,
+                app_data,
+            );
         }
 
         // start the consumer

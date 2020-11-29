@@ -78,7 +78,7 @@ std::future<void> ProxyDevice::OnConnectRecvTransport(const nlohmann::json& dtls
 
 std::future<void> ProxyDevice::OnConnectSendTransport(const nlohmann::json& dtlsParameters)
 {
-    std::cout << "ON CONNECT SEND CALLBACK OR WHATEVVVER" << std::endl;
+  std::cout << "ON CONNECT SEND CALLBACK OR WHATEVVVER" << std::endl;
   std::cout << dtlsParameters.dump(4) << std::endl;
   std::packaged_task<void()> task([]{ 
       std::cout << "on connect recv!" << std::endl;
@@ -87,12 +87,30 @@ std::future<void> ProxyDevice::OnConnectSendTransport(const nlohmann::json& dtls
   return task.get_future();
 }
 
+void ProxyDevice::create_consumer(
+  const rust::String id,
+  const rust::String producerId,
+  const rust::String kind,
+  const rust::String rtpParametersStr,
+  const rust::String appDataStr
+) {
+  auto rtpParams = nlohmann::json::parse(std::string(rtpParametersStr));
+  this->recvTransport->Consume(
+      this, 
+      std::string(id),
+      std::string(producerId),
+      std::string(kind),
+      &rtpParams,
+      nlohmann::json::parse(std::string(appDataStr))
+  );
+}
+
 void ProxyDevice::create_data_consumer(
-    const rust::String consumerId,
-    const rust::String producerId,
-    const rust::String label,
-    const rust::String protocol,
-    const rust::String appData
+  const rust::String consumerId,
+  const rust::String producerId,
+  const rust::String label,
+  const rust::String protocol,
+  const rust::String appData
 ) {
   this->dataConsumer = this->recvTransport->ConsumeData(
       this, 
@@ -100,7 +118,8 @@ void ProxyDevice::create_data_consumer(
       std::string(producerId), 
       std::string(label),
       std::string(protocol),
-      nlohmann::json::parse(std::string(appData)));
+      nlohmann::json::parse(std::string(appData))
+    );
 }
 
 /*
@@ -158,6 +177,11 @@ void ProxyDevice::OnTransportClose(mediasoupclient::Producer* /*producer*/)
 void ProxyDevice::OnTransportClose(mediasoupclient::DataProducer* /*dataProducer*/)
 {
 	std::cout << "[INFO] Broadcaster::OnTransportClose()" << std::endl;
+}
+
+void ProxyDevice::OnTransportClose(mediasoupclient::Consumer* /*dataProducer*/)
+{
+	std::cout << "[INFO] consumer Broadcaster::OnTransportClose()" << std::endl;
 }
 
 void ProxyDevice::OnMessage(mediasoupclient::DataConsumer* dataConsumer, const webrtc::DataBuffer& buffer)

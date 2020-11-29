@@ -8,6 +8,7 @@ void initialize();
 
 class ProxyDevice: public mediasoupclient::SendTransport::Listener,
                    mediasoupclient::Producer::Listener,
+                   mediasoupclient::Consumer::Listener,
                    mediasoupclient::DataProducer::Listener,
                    mediasoupclient::DataConsumer::Listener
 {
@@ -53,6 +54,9 @@ public:
 	{
 	}
 
+public:
+	void OnTransportClose(mediasoupclient::Consumer* dataProducer) override;
+
 	/* Virtual methods inherited from DataProducer::Listener */
 public:
 	void OnOpen(mediasoupclient::DataProducer* dataProducer) override;
@@ -73,6 +77,14 @@ public:
       const rust::String label,
       const rust::String protocol,
       const rust::String appData
+  );
+
+  void create_consumer(
+      const rust::String id,
+      const rust::String producerId,
+      const rust::String kind,
+      const rust::String rtpParametersStr,
+      const rust::String appDataStr
   );
 
   void CreateFakeSendTransport() const;

@@ -43,22 +43,31 @@ pub mod recv_track {
         Video,
     }
 
+    impl ToString for CodecKind {
+        fn to_string(&self) -> String {
+            match self {
+                CodecKind::Audio => String::from("audio"),
+                CodecKind::Video => String::from("video"),
+            }
+        }
+    }
+
     // TODO(haze): transform `kind` from String to typed enum
     #[derive(Deserialize, Debug)]
     pub struct Response {
         pub id: String,
-        kind: CodecKind,
+        pub kind: CodecKind,
         #[serde(rename = "producerId")]
         pub producer_id: String,
         #[serde(rename = "producerPaused")]
         producer_paused: bool,
         #[serde(rename = "rtpParameters")]
-        rtp_parameters: RTPParameters,
+        pub rtp_parameters: RTPParameters,
         #[serde(rename = "type")]
         track_kind: String,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug)]
     pub struct RTPParameters {
         codecs: Vec<Codec>,
         encodings: Vec<Encoding>,
@@ -67,7 +76,7 @@ pub mod recv_track {
         mid: String,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug)]
     pub struct Codec {
         #[serde(rename = "clockRate")]
         clock_rate: usize,
@@ -81,18 +90,18 @@ pub mod recv_track {
         rtcp_feedback: Vec<Feedback>,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug)]
     pub struct Encoding {
         ssrc: usize,
         rtx: Rtx,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug)]
     pub struct Rtx {
         ssrc: usize,
     }
 
-    #[derive(Deserialize, Debug)]
+    #[derive(Deserialize, Serialize, Debug)]
     pub struct HeaderExtension {
         encrypt: bool,
         id: usize,
