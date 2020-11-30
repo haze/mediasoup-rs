@@ -16,4 +16,3 @@ after you set those, go to the root of this repo and run `cargo run -- --help` t
 TODO:
 explain how to install rust, what are it's tools, etc
 explain architecture
-
