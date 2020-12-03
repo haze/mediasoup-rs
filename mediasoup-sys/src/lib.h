@@ -5,6 +5,7 @@
 void print_mediasoup_version();
 void debug();
 void initialize();
+void setup_logging();
 
 class ProxyDevice: public mediasoupclient::SendTransport::Listener,
                    mediasoupclient::Producer::Listener,
@@ -92,7 +93,17 @@ public:
     const rust::String transportOptionsJsonStr
   );
 
+  void set_on_connect_recv_transport_callback(rust::Fn<void(rust::String)> callback);
+  void set_on_connection_state_update_callback(rust::Fn<void(const std::string&)> callback);
 private:
+  /* transport connect recv callback */
+  rust::Fn<void(rust::String)> onConnectRecvCallback;
+  bool onConnectRecvCallbackSet{false};
+
+  /* connect state change callback */
+  rust::Fn<void(const std::string&)> onConnectionStateChangedCallback;
+  bool onConnectionStateChangedCallbackSet{false};
+
   mediasoupclient::Device device;
 
   mediasoupclient::RecvTransport* recvTransport{ nullptr };

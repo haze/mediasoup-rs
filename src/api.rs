@@ -201,13 +201,6 @@ pub struct PeerId<'peer_id> {
 }
 
 pub type JoinRoom<'a> = PeerId<'a>;
-pub type LeaveRoom<'a> = PeerId<'a>;
-pub type SyncRequest<'a> = PeerId<'a>;
-
-#[derive(Deserialize, Debug)]
-pub struct LeaveResponse {
-    pub left: bool,
-}
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct CapabilitiesResponse {
@@ -217,11 +210,31 @@ pub struct CapabilitiesResponse {
 
 pub type PeerMap = HashMap<String, PeerInfo>;
 
-#[derive(Deserialize, Debug)]
-pub struct SyncResponse {
-    #[serde(rename = "activeSpeaker")]
-    pub active_speaker: ActiveSpeakerInfo,
-    pub peers: PeerMap,
+pub mod join {
+    pub type Request<'a> = super::PeerId<'a>;
+    pub type Response = super::CapabilitiesResponse;
+}
+
+pub mod leave {
+    use super::Deserialize;
+    pub type Request<'a> = super::PeerId<'a>;
+
+    #[derive(Deserialize, Debug)]
+    pub struct Response {
+        pub left: bool,
+    }
+}
+
+pub mod sync {
+    use super::{ActiveSpeakerInfo, Deserialize, PeerMap};
+    pub type Request<'a> = super::PeerId<'a>;
+
+    #[derive(Deserialize, Debug)]
+    pub struct Response {
+        #[serde(rename = "activeSpeaker")]
+        pub active_speaker: ActiveSpeakerInfo,
+        pub peers: PeerMap,
+    }
 }
 
 #[derive(Deserialize, Clone, Debug)]

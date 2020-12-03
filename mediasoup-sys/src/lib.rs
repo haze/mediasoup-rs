@@ -5,16 +5,28 @@ pub mod ffi {
         pub fn print_mediasoup_version();
         pub fn debug() -> Result<()>;
         pub fn initialize();
+        pub fn setup_logging();
 
         type ProxyDevice;
 
         fn new_mediasoup_device() -> UniquePtr<ProxyDevice>;
         fn is_loaded(&self) -> bool;
         fn get_recv_rtp_capabilities(&self) -> Result<String>;
+
         fn load_capabilities_from_string(
             self: Pin<&mut ProxyDevice>,
             capabilities: String,
         ) -> Result<()>;
+
+        fn set_on_connect_recv_transport_callback(
+            self: Pin<&mut ProxyDevice>,
+            callback: fn(String),
+        );
+
+        fn set_on_connection_state_update_callback(
+            self: Pin<&mut ProxyDevice>,
+            callback: fn(&CxxString),
+        );
 
         fn create_fake_recv_transport(self: Pin<&mut ProxyDevice>, transport_options_str: String);
 
@@ -38,7 +50,7 @@ pub mod ffi {
     }
 }
 
-pub use cxx::{Exception, UniquePtr};
+pub use cxx::{Exception, SharedPtr, UniquePtr};
 
 // TODO(haze): Vet this
 unsafe impl Send for ffi::ProxyDevice {}

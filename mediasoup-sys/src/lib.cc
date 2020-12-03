@@ -14,6 +14,13 @@ void initialize() {
   mediasoupclient::Initialize();
 }
 
+void setup_logging() {
+  rtc::LogMessage::LogToDebug(rtc::LoggingSeverity::LS_ERROR);
+  auto logLevel = mediasoupclient::Logger::LogLevel::LOG_DEBUG;
+  mediasoupclient::Logger::SetLogLevel(logLevel);
+  mediasoupclient::Logger::SetDefaultHandler();
+}
+
 void debug() {
   auto device = mediasoupclient::Device();
   std::cout << device.IsLoaded() << std::endl;
@@ -56,24 +63,44 @@ void ProxyDevice::create_fake_recv_transport(
 
 std::future<void> ProxyDevice::OnConnect(mediasoupclient::Transport* transport, const nlohmann::json& dtlsParameters)
 {
-  std::cout << "ON CONNECT CALLBACK OR WHATEVVVER" << std::endl;
-  std::cout << dtlsParameters.dump(4) << std::endl;
-  std::packaged_task<void()> task([]{ 
-      std::cout << "on connect!" << std::endl;
-      return; 
-  }); // wrap the function
-  return task.get_future();
+
+  	std::cout << "[INFO] Broadcaster::OnConnect()" << std::endl;
+	std::cout << "[INFO] dtlsParameters: " << dtlsParameters.dump(4) << std::endl;
+	if (this->sendTransport != nullptr && transport->GetId() == this->sendTransport->GetId()) {
+	  std::cout << "brother moment" << std::endl;
+	  return this->OnConnectSendTransport(dtlsParameters);
+	} else if (transport->GetId() == this->recvTransport->GetId()) {
+	  std::cout << "bruh" << std::endl;
+	  return this->OnConnectRecvTransport(dtlsParameters);
+	} else {
+	  std::cout << "biggity bruh" << std::endl;
+	  std::promise<void> promise;
+	  promise.set_exception(std::make_exception_ptr("Unknown transport requested to connect"));
+	  return promise.get_future();
+	}
 }
+
+void ProxyDevice::set_on_connect_recv_transport_callback(rust::Fn<void(rust::String)> callback) {
+  this->onConnectRecvCallback = callback;
+  this->onConnectRecvCallbackSet = true;
+}
+
+void ProxyDevice::set_on_connection_state_update_callback(rust::Fn<void(const std::string&)> callback) {
+  this->onConnectionStateChangedCallback = callback;
+  this->onConnectionStateChangedCallbackSet = true;
+}
+
 
 std::future<void> ProxyDevice::OnConnectRecvTransport(const nlohmann::json& dtlsParameters)
 {
-    std::cout << "ON CONNECT RECV CALLBACK OR WHATEVVVER" << std::endl;
+  if (this->onConnectRecvCallbackSet) {
+    (*this->onConnectRecvCallback)(dtlsParameters.dump());
+  }
+  std::cout << "ON CONNECT RECV CALLBACK OR WHATEVVVER" << std::endl;
   std::cout << dtlsParameters.dump(4) << std::endl;
-  std::packaged_task<void()> task([]{ 
-      std::cout << "on connect recv!" << std::endl;
-      return; 
-  }); // wrap the function
-  return task.get_future();
+  std::promise<void> promise;
+  promise.set_value();
+  return promise.get_future();
 }
 
 std::future<void> ProxyDevice::OnConnectSendTransport(const nlohmann::json& dtlsParameters)
@@ -128,6 +155,9 @@ void ProxyDevice::create_data_consumer(
 void ProxyDevice::OnConnectionStateChange(
   mediasoupclient::Transport* /*transport*/, const std::string& connectionState)
 {
+  if (this->onConnectionStateChangedCallbackSet) {
+    (*this->onConnectionStateChangedCallback)(connectionState);
+  }
   std::cout << "Connection state changed to " << connectionState << std::endl;
 }
 

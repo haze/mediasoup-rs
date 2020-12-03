@@ -5,7 +5,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("HTTP error: {0}")]
-    Request(String),
+    Request(#[from] reqwest::Error),
 
     #[error("There was an error sending the shutdown signal the polling task")]
     ShutdownPollingTaskFailed,
@@ -18,10 +18,4 @@ pub enum Error {
 
     #[error("Serde error: {0}")]
     SerdeJson(#[from] serde_json::Error),
-}
-
-impl From<surf::Error> for Error {
-    fn from(error: surf::Error) -> Self {
-        Error::Request(error.to_string())
-    }
 }

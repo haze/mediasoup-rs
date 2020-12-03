@@ -8,6 +8,7 @@ mod error;
 mod mediasoup;
 
 use error::Result;
+use reqwest as req; // i typo this way too much
 
 // TODO(haze): Add selector for selecting specific media type for specific peer id (blocking on not
 // knowing all media types)
@@ -37,6 +38,7 @@ async fn main() -> Result<()> {
     dbg!(&args);
 
     // always initialize mediasoup (TODO(haze): Do this lazily at some other poitn)
+    mediasoup_sys::ffi::setup_logging();
     mediasoup_sys::ffi::initialize();
 
     let my_peer_id = args
@@ -77,10 +79,12 @@ async fn main() -> Result<()> {
 
 type CurrentPeerData = Option<PeerMap>;
 type CurrentActiveSpeaker = Option<ActiveSpeakerInfo>;
+type CurrentConnectionState = Option<ActiveSpeakerInfo>;
 
 type SharedProxyDevice = Arc<RwLock<mediasoup_sys::UniquePtr<mediasoup_sys::ffi::ProxyDevice>>>;
 
 struct Client {
+    http_client: Arc<req::Client>,
     peer_id: String,
     server_address: String,
     polling_interval_ms: u64,
@@ -90,6 +94,7 @@ struct Client {
 
     current_active_speaker: Option<watch::Receiver<CurrentActiveSpeaker>>,
     peer_data: Option<watch::Receiver<CurrentPeerData>>,
+    conneciton_state: watch::Receiver<CurrentConnectionState>,
 
     poll_task_handle: Option<tokio::task::JoinHandle<()>>,
     shutdown_poll_task_sender: Option<tokio::sync::oneshot::Sender<()>>,
@@ -111,7 +116,22 @@ impl Client {
         target_peer_id: Option<String>,
         polling_interval_ms: u64,
     ) -> Client {
+        let (connection_state_tx, connection_state_rx) = watch::channel();
+        let mut device = mediasoup_sys::ffi::new_mediasoup_device();
+        {
+            // pin ref method receiver not implemented, have to re-pin
+            device
+                .pin_mut()
+                .set_on_connect_recv_transport_callback(Client::on_connection_recv_transport);
+            device.pin_mut().set_on_connection_state_update_callback(
+                connection_state_tx,
+                |sender, state| {
+                    println!("do work here");
+                },
+            );
+        }
         Client {
+            http_client: Arc::new(req::Client::new()),
             peer_id,
             server_address,
             polling_interval_ms,
@@ -120,11 +140,12 @@ impl Client {
 
             current_active_speaker: None,
             peer_data: None,
+            conneciton_state: None,
 
             shutdown_poll_task_sender: None,
             poll_task_handle: None,
             // TODO(haze): Does this imply one device per client? Or is one device per computer?
-            proxy_device: Arc::new(RwLock::new(mediasoup_sys::ffi::new_mediasoup_device())),
+            proxy_device: Arc::new(RwLock::new(device)),
         }
     }
 
@@ -144,16 +165,32 @@ impl Client {
     /// `join_room` will send a `api::Request::JoinRoom` request to the bound server address.
     /// This doesn't do much for us, but registeres us as a client on the server end so we can open
     /// transports
-    async fn join_room(&mut self) -> Result<api::CapabilitiesResponse> {
-        let url = format!("{}/signaling/join-as-new-peer", &self.server_address);
-        let response = surf::post(url)
-            .body(surf::Body::from_json(&api::JoinRoom {
+    async fn join_room(&mut self) -> Result<api::join::Response> {
+        let response = Client::join_room_raw(
+            self.http_client.as_ref(),
+            &*self.server_address,
+            &api::join::Request {
                 peer_id: &self.peer_id,
-            })?)
-            .recv_json()
-            .await?;
+            },
+        )
+        .await?;
         self.start_sync_polling_task();
-        return Ok(response);
+        Ok(response)
+    }
+
+    async fn join_room_raw<'a>(
+        client: &req::Client,
+        host: &str,
+        request: &api::join::Request<'a>,
+    ) -> Result<api::join::Response> {
+        let url = format!("{}/signaling/join-as-new-peer", host);
+        Ok(client
+            .post(&*url)
+            .json(request)
+            .send()
+            .await?
+            .json::<api::join::Response>()
+            .await?)
     }
 
     fn start_sync_polling_task(&mut self) {
@@ -178,18 +215,20 @@ impl Client {
         let task_server_address = self.server_address.clone();
         let task_target_peer_id = self.target_peer_id.clone();
         let task_device = Arc::clone(&self.proxy_device);
+        let task_http_client = Arc::clone(&self.http_client);
 
         self.poll_task_handle = Some(tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        match Client::sync_raw(&*task_server_address, &*task_peer_id).await {
+                        match Client::sync_raw(task_http_client.as_ref(), &*task_server_address, &*task_peer_id).await {
                             Ok(response) =>
                                         Client::on_sync_update(&peer_data_tx, &task_peer_peek, &active_speaker_tx,
                                             &task_host,
                                             &task_peer_id,
                                             &task_target_peer_id,
                                             &task_device,
+                                            task_http_client.as_ref(),
                                             response
                                         ).await,
                             Err(why) =>
@@ -205,6 +244,11 @@ impl Client {
         }));
     }
 
+    fn on_connection_recv_transport(dtls_parameters_str: String) {
+        println!("hello from rust!");
+        println!("params: {}", &dtls_parameters_str);
+    }
+
     /// `sync_update` is called whenever a sync succeedes
     async fn on_sync_update(
         peer_data_tx: &watch::Sender<CurrentPeerData>,
@@ -214,7 +258,8 @@ impl Client {
         my_peer_id: &str,
         target_peer_id: &Option<String>,
         device: &SharedProxyDevice,
-        response: api::SyncResponse,
+        client: &req::Client,
+        response: api::sync::Response,
     ) {
         // check if we already have seen peers before
         let mut new_peer_found = false;
@@ -255,7 +300,8 @@ impl Client {
                 // we are looking for a specific client, now is time to do more processing
                 if let Some(_target_peer) = response.peers.get(target_peer_id) {
                     if let Err(why) =
-                        Client::on_target_found(host, my_peer_id, target_peer_id, device).await
+                        Client::on_target_found(client, host, my_peer_id, target_peer_id, device)
+                            .await
                     {
                         eprintln!("Failed to run on_target_found callback: {:?}", &why);
                     }
@@ -275,13 +321,14 @@ impl Client {
     }
 
     async fn on_target_found(
+        client: &req::Client,
         host: &str,
         my_peer_id: &str,
         target_peer_id: &str,
         device: &SharedProxyDevice,
     ) -> Result<()> {
-        let media_tag = String::from("screen-video");
         let create_transport_resp = Client::create_transport_raw(
+            client,
             host,
             &api::RawCreateTransport {
                 direction: api::TransportDirection::Receive,
@@ -300,7 +347,7 @@ impl Client {
             device
                 .pin_mut()
                 .create_fake_recv_transport(transport_options_str);
-            eprintln!("Created fake transport");
+            eprintln!("Created fake transport!");
         }
 
         // we dropped the write lock, get a read one
@@ -308,51 +355,132 @@ impl Client {
         let rtp_capabilities = serde_json::from_str(&*device_read.get_recv_rtp_capabilities()?)?;
         drop(device_read);
 
-        eprintln!("RTP_Capabilities: {:?}", &rtp_capabilities);
-
         let recv_track_request = api::recv_track::Request {
             peer_id: my_peer_id.to_string(),
             media_peer_id: target_peer_id.to_string(),
             // TODO(haze): more than just screen-video
-            media_tag: media_tag.clone(),
+            media_tag: String::from("screen-video"),
             rtp_capabilities,
         };
 
         // create the recv track
-        let recv_track_response = Client::recv_track_raw(host, &recv_track_request).await?;
+        let recv_track_response = Client::recv_track_raw(client, host, &recv_track_request).await?;
         dbg!(&recv_track_response);
 
-        // fn create_consumer(
-        //     self: Pin<&mut ProxyDevice>,
-        //     id: String,
-        //     producer_id: String,
-        //     kind: String,
-        //     rtp_parameters_str: String,
-        //     app_data_str: String,
-        // );
-
         {
-            let app_data = serde_json::to_string(&CreateConsumerAppData {
-                peer_id: target_peer_id.to_string(),
-                media_tag: media_tag.clone(),
-            })?;
-            let rtp_parameters = serde_json::to_string(&recv_track_response.rtp_parameters)?;
-            dbg!((&app_data, &rtp_parameters));
+            eprintln!("Creating consumer...");
             let mut device = device.write().await;
+            // id: String,
+            // producer_id: String,
+            // kind: String,
+            // rtp_parameters_json_str: String,
+            // app_data_json_str: String,
+            let id = recv_track_response.id.clone();
+            let producer_id = recv_track_response.producer_id.clone();
+            let kind = recv_track_response.kind.to_string();
+            let rtp_parameters = serde_json::to_string_pretty(&recv_track_response.rtp_parameters)?;
+            println!("{}", &rtp_parameters);
             device.pin_mut().create_consumer(
-                recv_track_response.id.clone(),
-                recv_track_response.producer_id.clone(),
-                recv_track_response.kind.to_string(),
-                rtp_parameters,
-                app_data,
-            );
+                id,
+                producer_id,
+                kind,
+                // rtp_parameters,
+                String::from(
+                    r#"{"codecs": [
+    {
+      "clockRate": 90000,
+      "mimeType": "video/VP8",
+      "parameters": {},
+      "payloadType": 101,
+      "rtcpFeedback": [
+        {
+          "type": "transport-cc",
+          "parameter": ""
+        },
+        {
+          "type": "ccm",
+          "parameter": "fir"
+        },
+        {
+          "type": "nack",
+          "parameter": ""
+        },
+        {
+          "type": "nack",
+          "parameter": "pli"
         }
-
-        // start the consumer
+      ]
+    },
+    {
+      "clockRate": 90000,
+      "mimeType": "video/rtx",
+      "parameters": {
+        "apt": 101
+      },
+      "payloadType": 102,
+      "rtcpFeedback": []
+    }
+  ],
+  "encodings": [
+    {
+      "ssrc": 793772131,
+      "rtx": {
+        "ssrc": 664106021
+      }
+    }
+  ],
+  "headerExtensions": [
+    {
+      "encrypt": false,
+      "id": 1,
+      "parameters": {},
+      "uri": "urn:ietf:params:rtp-hdrext:sdes:mid"
+    },
+    {
+      "encrypt": false,
+      "id": 4,
+      "parameters": {},
+      "uri": "http://www.webrtc.org/experiments/rtp-hdrext/abs-send-time"
+    },
+    {
+      "encrypt": false,
+      "id": 5,
+      "parameters": {},
+      "uri": "http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"
+    },
+    {
+      "encrypt": false,
+      "id": 6,
+      "parameters": {},
+      "uri": "http://tools.ietf.org/html/draft-ietf-avtext-framemarking-07"
+    },
+    {
+      "encrypt": false,
+      "id": 11,
+      "parameters": {},
+      "uri": "urn:3gpp:video-orientation"
+    },
+    {
+      "encrypt": false,
+      "id": 12,
+      "parameters": {},
+      "uri": "urn:ietf:params:rtp-hdrext:toffset"
+    }
+  ],
+  "rtcp": {
+      "cname": "test"
+  },
+  "mid": "0"
+}"#,
+                ),
+                String::from("{}"),
+            );
+            eprintln!("Consumer created!");
+        }
 
         // let connect_transport_request = api::connect_transport::Request {
         //     peer_id: my_peer_id.to_string(),
-        //     transport_id: recv_track_response.transport_options.id.clone(),
+        //     transport_id: recv_track_response.
         // };
         // // ok now connect them together
         // let connect_transport_response = Client::connect_transport_response(host).await?;
@@ -376,98 +504,127 @@ impl Client {
         Ok(())
     }
 
-    async fn leave_room(&mut self) -> Result<api::LeaveResponse> {
-        let response = Client::leave_room_raw(&*self.server_address, &*self.peer_id).await?;
+    async fn leave_room(&mut self) -> Result<api::leave::Response> {
+        let response = Client::leave_room_raw(
+            self.http_client.as_ref(),
+            &*self.server_address,
+            &*self.peer_id,
+        )
+        .await?;
         if response.left {
             self.shutdown_polling_task().await?;
         }
         Ok(response)
     }
 
-    async fn leave_room_raw(host: &str, peer_id: &str) -> Result<api::LeaveResponse> {
+    async fn leave_room_raw(
+        client: &req::Client,
+        host: &str,
+        peer_id: &str,
+    ) -> Result<api::leave::Response> {
         let url = format!("{}/signaling/leave", host);
-        surf::post(url)
-            .body(surf::Body::from_json(&api::LeaveRoom { peer_id })?)
-            .recv_json()
-            .await
-            .map_err(|e| e.into())
+        Ok(client
+            .post(&*url)
+            .json(&api::leave::Request { peer_id })
+            .send()
+            .await?
+            .json::<api::leave::Response>()
+            .await?)
     }
 
     async fn connect_transport(
         &self,
         request: &api::connect_transport::Request,
     ) -> Result<api::connect_transport::Response> {
-        Client::connect_transport_raw(&*self.server_address, request).await
+        Client::connect_transport_raw(self.http_client.as_ref(), &*self.server_address, request)
+            .await
     }
 
     async fn connect_transport_raw(
+        client: &req::Client,
         host: &str,
         request: &api::connect_transport::Request,
     ) -> Result<api::connect_transport::Response> {
         let url = format!("{}/signaling/connect-transport", host);
-        surf::post(url)
-            .body(surf::Body::from_json(request)?)
-            .recv_json()
-            .await
-            .map_err(|e| e.into())
+        Ok(client
+            .post(&*url)
+            .json(request)
+            .send()
+            .await?
+            .json::<api::connect_transport::Response>()
+            .await?)
     }
 
-    async fn sync(&mut self) -> Result<api::SyncResponse> {
-        Client::sync_raw(&*self.server_address, &*self.peer_id).await
+    async fn sync(&mut self) -> Result<api::sync::Response> {
+        Client::sync_raw(
+            self.http_client.as_ref(),
+            &*self.server_address,
+            &*self.peer_id,
+        )
+        .await
     }
 
-    async fn sync_raw(host: &str, peer_id: &str) -> Result<api::SyncResponse> {
+    async fn sync_raw(
+        client: &req::Client,
+        host: &str,
+        peer_id: &str,
+    ) -> Result<api::sync::Response> {
         let url = format!("{}/signaling/sync", host);
-        surf::post(url)
-            .body(surf::Body::from_json(&api::SyncRequest { peer_id })?)
-            .recv_json()
-            .await
-            .map_err(|e| e.into())
+        Ok(client
+            .post(&*url)
+            .json(&api::sync::Request { peer_id })
+            .send()
+            .await?
+            .json::<api::sync::Response>()
+            .await?)
     }
 
     async fn recv_track(
         &mut self,
         request: &api::recv_track::Request,
     ) -> Result<api::recv_track::Response> {
-        Client::recv_track_raw(&*self.server_address, request).await
+        Client::recv_track_raw(self.http_client.as_ref(), &*self.server_address, request).await
     }
 
     async fn recv_track_raw(
+        client: &req::Client,
         host: &str,
         request: &api::recv_track::Request,
     ) -> Result<api::recv_track::Response> {
         let url = format!("{}/signaling/recv-track", host);
-        surf::post(url)
-            .body(surf::Body::from_json(request)?)
-            .recv_json()
-            .await
-            .map_err(|e| e.into())
+        Ok(client
+            .post(&*url)
+            .json(request)
+            .send()
+            .await?
+            .json::<api::recv_track::Response>()
+            .await?)
     }
 
     async fn create_transport(
         &self,
         params: api::CreateTransport,
     ) -> Result<api::CreateTransportResponse> {
-        Client::create_transport_raw(&*self.server_address, &params.into_raw(&*self.peer_id)).await
+        Client::create_transport_raw(
+            self.http_client.as_ref(),
+            &*self.server_address,
+            &params.into_raw(&*self.peer_id),
+        )
+        .await
     }
 
     async fn create_transport_raw<'a>(
+        client: &req::Client,
         host: &str,
-        params: &api::RawCreateTransport<'a>,
+        request: &api::RawCreateTransport<'a>,
     ) -> Result<api::CreateTransportResponse> {
         let url = format!("{}/signaling/create-transport", host);
-        surf::post(url)
-            .body(surf::Body::from_json(params)?)
-            .recv_json()
-            .await
-            .map_err(|e| e.into())
+        Ok(client
+            .post(&*url)
+            .json(request)
+            .send()
+            .await?
+            .json::<api::CreateTransportResponse>()
+            .await?)
     }
-}
-
-#[derive(serde::Serialize)]
-struct CreateConsumerAppData {
-    #[serde(rename = "peerId")]
-    peer_id: String,
-    #[serde(rename = "mediaTag")]
-    media_tag: String,
 }
