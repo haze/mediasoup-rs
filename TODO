@@ -19,3 +19,5 @@ use rust::Str over rust::String
 More ugly code cleanup:
 In the c++ code, everything is in one flat namespace (including box's to callbacks for update things)
 Separate these out into individual structs so I don't pollyute the namespace
+
+Figure out workaround for storing ugly raw opaque rust pointer

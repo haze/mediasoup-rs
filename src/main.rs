@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
 
 type CurrentPeerData = Option<PeerMap>;
 type CurrentActiveSpeaker = Option<ActiveSpeakerInfo>;
-type CurrentConnectionState = Option<ActiveSpeakerInfo>;
+type CurrentConnectionState = Option<String>;
 
 type SharedProxyDevice = Arc<RwLock<mediasoup_sys::UniquePtr<mediasoup_sys::ffi::ProxyDevice>>>;
 
@@ -116,7 +116,7 @@ impl Client {
         target_peer_id: Option<String>,
         polling_interval_ms: u64,
     ) -> Client {
-        let (connection_state_tx, connection_state_rx) = watch::channel();
+        let (connection_state_tx, connection_state_rx) = watch::channel(None);
         let mut device = mediasoup_sys::ffi::new_mediasoup_device();
         {
             // pin ref method receiver not implemented, have to re-pin
@@ -124,9 +124,9 @@ impl Client {
                 .pin_mut()
                 .set_on_connect_recv_transport_callback(Client::on_connection_recv_transport);
             device.pin_mut().set_on_connection_state_update_callback(
-                connection_state_tx,
+                Box::new(mediasoup_sys::WatchUpdater(connection_state_tx)),
                 |sender, state| {
-                    println!("do work here");
+                    dbg!((&sender, &state));
                 },
             );
         }
@@ -140,7 +140,7 @@ impl Client {
 
             current_active_speaker: None,
             peer_data: None,
-            conneciton_state: None,
+            conneciton_state: connection_state_rx,
 
             shutdown_poll_task_sender: None,
             poll_task_handle: None,

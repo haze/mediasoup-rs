@@ -115,9 +115,8 @@ checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
 name = "cxx"
-version = "1.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e370dbdce657d6a365cb15c9e70c68a33eaa8715ee41886b984525739ec14c0e"
+version = "1.0.12"
+source = "git+https://github.com/dtolnay/cxx#355dfa5e1a3c3020e2cb178e4071a41eb3f325b3"
 dependencies = [
  "cc",
  "cxxbridge-flags",
@@ -127,9 +126,8 @@ dependencies = [
 
 [[package]]
 name = "cxx-build"
-version = "1.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "815127ac4110f8e05b2c865504aa8476a013e9610c4718bb2a305d0f3bbadc25"
+version = "1.0.12"
+source = "git+https://github.com/dtolnay/cxx#355dfa5e1a3c3020e2cb178e4071a41eb3f325b3"
 dependencies = [
  "cc",
  "codespan-reporting",
@@ -142,15 +140,13 @@ dependencies = [
 
 [[package]]
 name = "cxxbridge-flags"
-version = "1.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8df22c5a64b91cfe82690c445d5153c68600eef17bcbb13d5a577464e5a8847"
+version = "1.0.12"
+source = "git+https://github.com/dtolnay/cxx#355dfa5e1a3c3020e2cb178e4071a41eb3f325b3"
 
 [[package]]
 name = "cxxbridge-macro"
-version = "1.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "47efdc7db8f6b85de2d2a922c8699ca2e9e9a74060e3ac41c04e6e40290c91d5"
+version = "1.0.12"
+source = "git+https://github.com/dtolnay/cxx#355dfa5e1a3c3020e2cb178e4071a41eb3f325b3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -494,6 +490,7 @@ dependencies = [
  "cxx",
  "cxx-build",
  "pkg-config",
+ "tokio",
 ]
 
 [[package]]

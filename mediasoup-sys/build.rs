@@ -89,7 +89,7 @@ fn main() {
         .include(libwebrtc_abseil_include_path)
         .define("WEBRTC_MAC", "1")
         .define("WEBRTC_POSIX", "1")
-        .flag_if_supported("-std=c++14")
+        .flag_if_supported("-std=c++17")
         .warnings(false)
         .compile("mediasoup-sys");
 

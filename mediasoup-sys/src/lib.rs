@@ -1,5 +1,11 @@
+#[derive(Debug)]
+pub struct WatchUpdater(pub tokio::sync::watch::Sender<Option<String>>);
+
 #[cxx::bridge]
 pub mod ffi {
+    extern "Rust" {
+        type WatchUpdater;
+    }
     unsafe extern "C++" {
         include!("src/lib.h");
         pub fn print_mediasoup_version();
@@ -25,7 +31,8 @@ pub mod ffi {
 
         fn set_on_connection_state_update_callback(
             self: Pin<&mut ProxyDevice>,
-            callback: fn(&CxxString),
+            notifier: Box<WatchUpdater>,
+            callback: fn(Box<WatchUpdater>, &CxxString),
         );
 
         fn create_fake_recv_transport(self: Pin<&mut ProxyDevice>, transport_options_str: String);
