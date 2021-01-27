@@ -154,7 +154,7 @@ pub struct TransportOptions {
     #[serde(rename = "dtlsParameters")]
     pub dtls_parameters: DTLSParameters,
     #[serde(rename = "sctpParameters")]
-    pub sctp_parameteres: Option<SCTPParameters>,
+    pub sctp_parameters: Option<SCTPParameters>,
 }
 
 type SCTPParameters = serde_json::Value;

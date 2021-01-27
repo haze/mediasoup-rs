@@ -1,11 +1,10 @@
+# Design
 
+## Random notes and thoughts while working:
 
+When designing the polling mechanism the problem is that I want the client to exist without having the polling task having exclusive mutable access over the client, and I also don't want the client to be wrapped in a big mutex/rwlock, because that would incur (based on polling frequency) large lock overhead over data that is not being updated with the sync mechanism. Here are the two solutions I came up with:
 
-Random notes and thoughts while working:
+1. I could use `tokio::sync::watch` channels to update separate items individually. These are listed as single consumer (good) multi consumer (also good) channels that only retain the last value updated
+2. An alternative solution would be to store synced items in their own struct and keep that under an `Arc<Lock<>>`. This would also make the updating more inflexible because it means we can't poll for certain pieces of data at different intervals-- everything has to be updated at once.
 
-When desiging the polling mechanism
-The problem is that I want the client to exist without having the polling task having exclusive mutable access over the client, and I also don't want the client to be wrapped in a big mutex/rwlock, because that would incur (based on polling frequency) large lock overhead over data that is not being updated with the sync mechanism. Here are the two solutions I came up with:
-1. I could use tokio::sync::watch channels to update separate items invidisually. These are listed as single consumer (good) multi consumer (also good) channels that only retain the last value updated
-2. An alternative solution would be to store synced items in their own struct and keep that under an Arc<Lock<>>. This would also make the updating more inflexible because it means we can't poll for certain pieces of data at different intervals-- everything has to be updated at once.
-
-I am going with the first (and will write here once i finish that)
+I am going with the first (and will write here once I finish that)

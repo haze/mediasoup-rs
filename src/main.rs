@@ -37,7 +37,7 @@ async fn main() -> Result<()> {
     let args: Arguments = argh::from_env();
     dbg!(&args);
 
-    // always initialize mediasoup (TODO(haze): Do this lazily at some other poitn)
+    // always initialize mediasoup (TODO(haze): Do this lazily at some other point)
     mediasoup_sys::ffi::setup_logging();
     mediasoup_sys::ffi::initialize();
 
@@ -94,7 +94,7 @@ struct Client {
 
     current_active_speaker: Option<watch::Receiver<CurrentActiveSpeaker>>,
     peer_data: Option<watch::Receiver<CurrentPeerData>>,
-    conneciton_state: watch::Receiver<CurrentConnectionState>,
+    connection_state: watch::Receiver<CurrentConnectionState>,
 
     poll_task_handle: Option<tokio::task::JoinHandle<()>>,
     shutdown_poll_task_sender: Option<tokio::sync::oneshot::Sender<()>>,
@@ -140,7 +140,7 @@ impl Client {
 
             current_active_speaker: None,
             peer_data: None,
-            conneciton_state: connection_state_rx,
+            connection_state: connection_state_rx,
 
             shutdown_poll_task_sender: None,
             poll_task_handle: None,
@@ -163,7 +163,7 @@ impl Client {
     }
 
     /// `join_room` will send a `api::Request::JoinRoom` request to the bound server address.
-    /// This doesn't do much for us, but registeres us as a client on the server end so we can open
+    /// This doesn't do much for us, but registers us as a client on the server end so we can open
     /// transports
     async fn join_room(&mut self) -> Result<api::join::Response> {
         let response = Client::join_room_raw(
@@ -249,7 +249,7 @@ impl Client {
         println!("params: {}", &dtls_parameters_str);
     }
 
-    /// `sync_update` is called whenever a sync succeedes
+    /// `sync_update` is called whenever a sync succeeds
     async fn on_sync_update(
         peer_data_tx: &watch::Sender<CurrentPeerData>,
         peer_data_rx: &watch::Receiver<CurrentPeerData>,
@@ -265,7 +265,7 @@ impl Client {
         let mut new_peer_found = false;
         {
             if let Some(ref peer_data) = *peer_data_rx.borrow() {
-                // threeway optimized match, check key size, then key names, then deep equals
+                // three-way optimized match, check key size, then key names, then deep equals
                 let key_size_eql = peer_data.keys().len() == response.peers.keys().len();
                 let keys_match = peer_data.keys().all(|key| response.peers.contains_key(key));
                 let is_new = !key_size_eql
@@ -490,7 +490,7 @@ impl Client {
 
     /// `shutdown_polling_task` will do two things:
     /// 1. Attempt to send a kill signal to the polling task. This will trigger an early break
-    ///    (inbetween intervals) to the loop and return early.
+    ///    (in-between intervals) to the loop and return early.
     /// 2. Attempt to join the task.
     async fn shutdown_polling_task(&mut self) -> Result<()> {
         if let Some(sender) = self.shutdown_poll_task_sender.take() {
